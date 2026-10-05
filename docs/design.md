@@ -6,4 +6,4 @@ Flujo alineado a la izquierda: cabecera → Canciones / Mis acordes → formular
 
 Se revisó contra la referencia: los colores y tarjetas son intencionales porque pertenecen al diseño aprobado. La adaptación evita elementos decorativos nuevos y prioriza tocar y leer desde un teléfono.
 
-GitHub Pages sirve archivos estáticos. El catálogo se abre en otra pestaña y se importa texto pegado; no se promete una consulta automática a páginas que no permiten lectura desde otro origen. Las hojas se guardan solo en el dispositivo.
+GitHub Pages sirve la interfaz. Un servicio en Vercel consulta las hojas públicas del catálogo y devuelve los resultados y el texto a la app. La búsqueda y la lectura permanecen en la misma pantalla; las hojas guardadas se conservan en el dispositivo. Los errores del catálogo se muestran con una indicación para reintentar o pegar una hoja propia.

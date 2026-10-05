@@ -6,9 +6,13 @@ Versión para Safari: **https://luisca66.github.io/acordes-guitarra/**. En iPhon
 
 La web está en `docs/` y se publica con GitHub Pages. Conserva las posiciones visuales, la lectura de letras con acordes, los nombres en español y la exportación de posiciones en PNG. La última hoja y los archivos de la app se guardan localmente para uso sin conexión después de la primera visita.
 
-**Diferencia con Android:** en GitHub Pages la búsqueda abre el catálogo en otra pestaña. Hay que copiar una letra con acordes y usar **Pegar letra con acordes**; no hay descarga automática desde Ultimate Guitar. No se adivinan acordes ni su colocación. Las hojas no se envían a GitHub.
+La búsqueda consulta el servicio `/api/catalog` publicado en Vercel y muestra únicamente versiones públicas de tipo **Chords**. Al elegir una versión, la letra y los acordes se abren dentro de la app, con atribución y enlace original. No se importan versiones Pro ni se adivinan acordes o su colocación. **Pegar letra con acordes** sigue disponible para hojas propias. La búsqueda necesita internet; la última hoja guardada se puede leer sin conexión.
 
-Pruebas de la web: `npm test`. Para probar localmente: `node tests/serve.mjs` y abrir http://127.0.0.1:4173. El catálogo se genera desde el motor Android mediante `tests/ExportChords.java`. La versión web incluye 646 posiciones; los bajos de acordes mayores están incluidos, y las digitaciones explícitas de una hoja tienen prioridad.
+El enlace de la app sigue en GitHub Pages. Para activar el buscador hay que desplegar primero el servicio desde este repositorio como proyecto Vercel `acordes-guitarra-luisca66`, con el preset Other y la configuración de `vercel.json`, y después publicar los archivos web de esta revisión. Vercel necesita acceso al repositorio de GitHub; el servicio debe estar accesible en su dominio de producción, sin inicio de sesión. No se requieren claves en el navegador.
+
+El servicio acepta únicamente búsquedas de hasta 150 caracteres y enlaces HTTPS de hojas públicas de `tabs.ultimate-guitar.com/tab/`. Limita las respuestas a 3 MB y el tiempo de consulta a 14 segundos, conserva exactamente el texto original y distingue una búsqueda sin coincidencias de una versión inexistente. El formato del catálogo y su disponibilidad pueden cambiar.
+
+Pruebas de la web y del servicio: `npm test`. Para probar localmente: `node tests/serve.mjs` y abrir http://127.0.0.1:4173; ese servidor también sirve `/api/catalog`. El catálogo de posiciones se genera desde el motor Android mediante `tests/ExportChords.java`. La versión web incluye 646 posiciones; los bajos de acordes mayores están incluidos, y las digitaciones explícitas de una hoja tienen prioridad.
 
 El APK Android se distribuye desde las publicaciones de GitHub; no se instala en iPhone.
 

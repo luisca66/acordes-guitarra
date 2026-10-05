@@ -2,6 +2,20 @@ import {manual,parseSheet,diagram,describe} from './music.js';
 const $=id=>document.getElementById(id);
 const status=text=>{$('status').textContent=text;};
 let catalog={},mode='songs',song=null,parsed=null,manualPositions=[];
+const CATALOG_API=location.hostname==='127.0.0.1'?'/api/catalog':'https://acordes-guitarra-luisca66.vercel.app/api/catalog';
+let lookup=0,controller=null;
+function cancelLookup(){lookup++;controller?.abort();$('search-button').disabled=false;$('search-results').removeAttribute('aria-busy');}
+async function requestCatalog(params,signal){
+ const request=new AbortController();let timedOut=false;
+ const cancel=()=>request.abort();signal.addEventListener('abort',cancel,{once:true});if(signal.aborted)cancel();
+ const timer=setTimeout(()=>{timedOut=true;request.abort();},25000);
+ try{const response=await fetch(CATALOG_API+'?'+new URLSearchParams(params),{signal:request.signal,credentials:'omit'});
+  let value;try{value=await response.json();}catch{throw Error('No se pudo conectar con el buscador. Intenta de nuevo.');}
+  if(!response.ok)throw Error(value.error||'No se pudo cargar el catálogo. Intenta de nuevo.');
+  return value;
+ }catch(error){if(timedOut)throw Error('El buscador tardó demasiado. Intenta de nuevo.');throw error;}
+ finally{clearTimeout(timer);signal.removeEventListener('abort',cancel);}
+}
 const store={get(key){try{return localStorage.getItem('acordes.'+key);}catch{return null;}},set(key,value){try{localStorage.setItem('acordes.'+key,value);return true;}catch{status('No se pudo guardar en este navegador. Puedes seguir usando la app.');return false;}}};
 function switchMode(next){mode=next;$('songs-tab').setAttribute('aria-pressed',next==='songs');$('chords-tab').setAttribute('aria-pressed',next==='chords');$('songs-panel').hidden=next!=='songs';$('chords-panel').hidden=next!=='chords';$('song').hidden=next!=='songs'||!song;$('manual-result').hidden=next!=='chords'||!manualPositions.length;status('');}
 function positionFor(name){return parsed?.definitions.get(name)||(catalog[name]?{name,frets:catalog[name],source:false}:null);}
@@ -11,6 +25,7 @@ function showSong(value,save=true){
  song=value;parsed=parseSheet(value.text,catalog);$('song-title').textContent=value.title||'Mi canción';
  let url=null;try{const source=new URL(value.source);if(source.protocol==='https:'||source.protocol==='http:')url=source.href;}catch{}
  $('source-link').hidden=!url;if(url)$('source-link').href=url;
+ const meta=[];if(value.author)meta.push('Ultimate Guitar · '+value.author);if(value.capo!==null&&value.capo!==undefined&&String(value.capo)!=='0')meta.push('Cejilla: traste '+value.capo);if(value.tuning==='other'&&value.originalTuning)meta.push('Afinación: '+value.originalTuning);$('song-meta').textContent=meta.join(' · ');
  const nonstandard=value.tuning==='other';cards($('song-diagrams'),nonstandard?[]:parsed.positions);
  $('position-note').textContent=nonstandard?'Esta hoja usa otra afinación. Se conserva la letra; no se muestran posiciones estándar.':parsed.missing.length?'Sin diagrama para: '+parsed.missing.join(', ')+'. La letra se conserva.':parsed.definitions.size?'Se conservan las digitaciones de la lista original.':'Toca una posición para ampliarla.';
  $('song-download').hidden=nonstandard||!parsed.positions.length;
@@ -19,12 +34,27 @@ function showSong(value,save=true){
  if(save)store.set('song',JSON.stringify(value));switchMode('songs');
 }
 function openPaste(edit=false){$('title-input').value=edit&&song?song.title:'';$('source-input').value=edit&&song?song.source:'';$('sheet-input').value=edit&&song?song.text:'';$('tuning-input').value=edit&&song?song.tuning:'standard';$('paste-dialog').showModal();}
-$('songs-tab').onclick=()=>switchMode('songs');$('chords-tab').onclick=()=>switchMode('chords');
-$('search-form').onsubmit=event=>{event.preventDefault();const query=$('query').value.trim();if(!query){status('Escribe un título; puedes agregar el artista.');return;}store.set('query',query);const link=document.createElement('a');link.href='https://www.ultimate-guitar.com/search.php?search_type=title&value='+encodeURIComponent(query);link.target='_blank';link.rel='noopener noreferrer';document.body.append(link);link.click();link.remove();status('Copia la letra con acordes de una versión y usa «Pegar letra con acordes».');};
-$('paste-button').onclick=()=>openPaste();$('edit-song').onclick=()=>openPaste(true);$('cancel-paste').onclick=()=>$('paste-dialog').close();$('close-chord').onclick=()=>$('chord-dialog').close();
+$('songs-tab').onclick=()=>switchMode('songs');$('chords-tab').onclick=()=>{cancelLookup();switchMode('chords');};
+async function chooseSong(selected){
+ cancelLookup();const token=lookup;controller=new AbortController();const active=controller;
+ status('Cargando letra y acordes…');$('search-results').setAttribute('aria-busy','true');
+ try{const sheet=await requestCatalog({url:selected.url},active.signal);if(token!==lookup)return;if(typeof sheet.text!=='string'||sheet.text.length>100000)throw Error('No se pudo leer esta versión. Elige otra.');showSong({...sheet,title:selected.title+(selected.artist?' · '+selected.artist:'')});$('search-results').replaceChildren();status('Canción lista. Toca cualquier acorde para ver su posición.');$('song').scrollIntoView({block:'start',behavior:'instant'});}
+ catch(error){if(token===lookup&&error.name!=='AbortError')status(error.message==='Failed to fetch'?'No se pudo conectar con el buscador. Revisa tu conexión e intenta de nuevo.':error.message);}
+ finally{if(token===lookup)$('search-results').removeAttribute('aria-busy');}
+}
+$('search-form').onsubmit=async event=>{
+ event.preventDefault();const query=$('query').value.trim();if(!query){status('Escribe un título; puedes agregar el artista.');return;}
+ cancelLookup();const token=lookup;controller=new AbortController();const active=controller;store.set('query',query);$('search-results').replaceChildren();$('search-results').setAttribute('aria-busy','true');$('search-button').disabled=true;status('Buscando canciones…');
+ try{const value=await requestCatalog({q:query},active.signal);if(token!==lookup)return;if(!Array.isArray(value.songs))throw Error('No se pudo leer la lista de canciones. Intenta de nuevo.');
+  for(const row of value.songs){const button=document.createElement('button');button.className='song-result';const title=document.createElement('strong');title.textContent=row.title;const detail=document.createElement('span');detail.textContent=row.artist+(row.version?' · Versión '+row.version:'');button.append(title,detail);button.onclick=()=>chooseSong(row);$('search-results').append(button);}
+  status(value.songs.length?'Elige canción, artista y versión:':'No encontré canciones con «'+query+'». Prueba una parte del título o agrega el artista.');
+ }catch(error){if(token===lookup&&error.name!=='AbortError')status(error.message==='Failed to fetch'?'No se pudo conectar con el buscador. Revisa tu conexión e intenta de nuevo.':error.message);}
+ finally{if(token===lookup){$('search-button').disabled=false;$('search-results').removeAttribute('aria-busy');}}
+};
+$('paste-button').onclick=()=>{cancelLookup();openPaste();};$('edit-song').onclick=()=>{cancelLookup();openPaste(true);};$('cancel-paste').onclick=()=>$('paste-dialog').close();$('close-chord').onclick=()=>$('chord-dialog').close();
 $('paste-form').onsubmit=event=>{event.preventDefault();const text=$('sheet-input').value;if(!text.trim())return;showSong({title:$('title-input').value.trim()||'Mi canción',source:$('source-input').value.trim(),tuning:$('tuning-input').value,text});$('paste-dialog').close();};
 $('chords-form').onsubmit=event=>{event.preventDefault();try{manualPositions=manual($('chord-input').value,catalog);cards($('manual-diagrams'),manualPositions);$('manual-result').hidden=false;status('');store.set('manual',$('chord-input').value);}catch(error){status(error.message);}};
-$('example-button').onclick=()=>showSong({title:'Hoy suena la guitarra · Ejemplo',source:'',tuning:'standard',text:'G 320033\nD xx0232\nEm 022000\nC x32010\n\n[Intro]\nG   D   Em   C\n\n[Verso]\nG              D\nHoy suena la guitarra\nEm           C\ny vuelvo a empezar\n'},false);
+$('example-button').onclick=()=>{cancelLookup();showSong({title:'Hoy suena la guitarra · Ejemplo',source:'',tuning:'standard',text:'G 320033\nD xx0232\nEm 022000\nC x32010\n\n[Intro]\nG   D   Em   C\n\n[Verso]\nG              D\nHoy suena la guitarra\nEm           C\ny vuelvo a empezar\n'},false);};
 async function download(positions,title){
  if(!positions.length)return;const button=mode==='songs'?$('song-download'):$('manual-download');button.disabled=true;
  try{const columns=2,cardWidth=420,cardHeight=440,top=120;const canvas=document.createElement('canvas');canvas.width=columns*cardWidth;canvas.height=top+Math.ceil(positions.length/columns)*cardHeight;const ctx=canvas.getContext('2d');ctx.fillStyle='#F7F3EB';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.fillStyle='#29382E';ctx.font='bold 30px sans-serif';ctx.fillText('Posiciones de guitarra',30,45);ctx.font='20px sans-serif';ctx.fillText('E A D G B e · Afinación estándar',30,82);
