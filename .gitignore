@@ -1,0 +1,9 @@
+.gradle/
+.idea/
+local.properties
+**/build/
+*.iml
+emulator-test*.log
+*.apk
+screenshots/*.xml
+node_modules/
