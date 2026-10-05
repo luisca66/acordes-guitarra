@@ -7,3 +7,5 @@ emulator-test*.log
 *.apk
 screenshots/*.xml
 node_modules/
+.codex-remote-attachments/
+.vercel/
